@@ -1,56 +1,44 @@
+import { Method } from "axios";
+import type { 
+    ApiFileJsonConstructor,
+    ApiFileJsonInstance,
+    ApiFileJsonProps,
+    PathsType,
+    DefinitionsType,
+} from "../interface/apiFileJson";
 const fs = require('fs');
-
 let defaultFilePath = 'C:\\Users\\mingrui\\Desktop\\note\\api\\test.json'
 
-type ApiFileJsonInstance = {
-    apiHashMap: Map<string, any>;
-    apiDtoModuleHashMap: Map<string, any>;
-    filePath: string;
-    initStatus: Promise<Map<string, any>>;
-    initPromise: Promise<any>;
-
-    init: () => Promise<void>;
-    readFile: (filePath: string) => Promise<string>;
-    eachApiPaths: (paths: any) => void; // 此处的 any 应替换为实际参数类型
-    eachRenderDto: (definitions: any) => void; // 此处的 any 应替换为实际参数类型
-    getApiHashMap: () => Promise<Map<string, any>>;
-    // 其他可能的方法...
-};
-
-type ApiFileJsonConstructor = {
-    new(props?: any): ApiFileJsonInstance;
-};
-
-export const ApiFileJson: ApiFileJsonConstructor = function (this: ApiFileJsonInstance, props:any = {}) {
-    if (!(this instanceof ApiFileJson)) {
-        throw new Error('Constructor must be called with new keyword');
-    }
+export const ApiFileJson: ApiFileJsonConstructor = function (this: ApiFileJsonInstance, props: ApiFileJsonProps = {}) {
     const { filePath } = props;
     this.apiHashMap = new Map();
     this.apiDtoModuleHashMap = new Map();
     this.filePath = filePath || defaultFilePath;
 
-    const init = async () => {
-        try {
-            const data = await this.readFile(this.filePath);
-            const { paths, definitions } = JSON.parse(data);
-            this.eachRenderDto(definitions);
-            this.eachApiPaths(paths);
-            return this.apiHashMap; // 返回 apiHashMap
-        } catch (err) {
-            console.error(err);
-            throw err; // 抛出错误
-        }
-    };
+    const init = () => 
+        new Promise(async(resolve, reject) => {
+            try {
+                const data = await this.readFile(this.filePath);
+                const { paths, definitions } = JSON.parse(data);
+                this.eachRenderDto(definitions);
+                this.eachApiPaths(paths);
+                resolve(true);
+            } catch (err) {
+                reject(err);
+            }
+        });
 
     this.initStatus = init();
 } as any;
 
+/**
+ * 读取文件
+ */
 ApiFileJson.prototype.readFile = function (filePath?: string) {
     filePath = filePath || this.filePath;
-    let resolve: any, reject: any;
+    let resolve: (data: unknown) => void , reject: (data: unknown) => void;
     const promise = new Promise((x, y) => { resolve = x; reject = y; });
-    fs.readFile(filePath, 'utf8', (err: any, data: any) => {
+    fs.readFile(filePath, 'utf8', (err: unknown, data: string) => {
         if (err) {
             reject(err);
         }
@@ -59,10 +47,14 @@ ApiFileJson.prototype.readFile = function (filePath?: string) {
     return promise;
 }
 
-ApiFileJson.prototype.eachApiPaths = function (paths: any) {
+/**
+ * 解析swagger下paths对象
+ */
+ApiFileJson.prototype.eachApiPaths = function (paths?: Record<string, PathsType>) {
     if (!paths) return;
     for (let apiUrl in paths) {
-        for (let apiMethod in paths[apiUrl]) {
+        let methods = Object.keys(paths[apiUrl]) as Method[];
+        for (let apiMethod of methods) {
             const apiModule = paths[apiUrl][apiMethod];
             const { parameters, responses } = apiModule;
             if (!parameters) continue;
@@ -78,7 +70,10 @@ ApiFileJson.prototype.eachApiPaths = function (paths: any) {
     }
 }
 
-ApiFileJson.prototype.eachRenderDto = function (definitions: any) {
+/**
+ * 解析swagger下definitions对象
+ */
+ApiFileJson.prototype.eachRenderDto = function (definitions?: Record<string, DefinitionsType>) {
     if (!definitions) return Promise.reject("definitions is null");
     for (let dto in definitions) {
         const { type, properties } = definitions[dto];
@@ -108,16 +103,18 @@ ApiFileJson.prototype.getApiHashMap = async function () {
     return this.apiHashMap;
 }
 
-async function main() {
-    try{
-        const apiFileJson = new ApiFileJson();
-        const apiHashMap = await apiFileJson.getApiHashMap();
-        let test = apiHashMap.get('/payment-bill/save:post');
-        console.log(test);
-    }
-    catch (err) {
-        console.error(err);
-    }
-}
+// 示例 
+// async function main() {
+//     try{
+//         const apiFileJson = new ApiFileJson();
+//         const apiHashMap = await apiFileJson.getApiHashMap();
+//         /payment-bill/save:post  --> api:请求方式
+//         let test = apiHashMap.get('/payment-bill/save:post');
+//         console.log(test);
+//     }
+//     catch (err) {
+//         console.error(err);
+//     }
+// }
 
-main();
+// main();
