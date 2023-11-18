@@ -8,7 +8,7 @@ const types = require('@babel/types');
 const axios = require('axios')
 const fs = require('fs');
 import { ApiFileJson } from './utils/apiFileJson'
-
+import babelConvert from './utils/babelConvert';
 let documentMetadata = '__API__';
 
 type LocType =  {
@@ -49,23 +49,25 @@ export function activate(context: vscode.ExtensionContext) {
 	// The commandId parameter must match the command field in package.json
 	let disposable = vscode.commands.registerCommand('plugins-interface.demo', async (...args) => {
         const apiInput = await vscode.window.showInputBox({ prompt: 'Enter something:', placeHolder: '输入api接口地址' });
+        // apiInput --> /payment-bill/save:post
         if (!apiInput) {
           return vscode.window.showWarningMessage('请输入api接口地址！！');
         }
-
+        // 输入接口 参数集合
+        let inputApiFields = {};
         // 解析api 地址
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
-            title: "正在解析目标api字段",
+            title: "正在解析目标api字段...",
             // 如果设置为 true，将允许用户取消操作
             cancellable: false 
         }, async (progress) => {
           const apiFileJson = new ApiFileJson();
           let apiHashMap = await apiFileJson.getApiHashMap();
-          console.log(apiHashMap.get(apiInput));
-          console.log('end....');
-            // 在这里执行你的异步操作
-          //  return await generateApiMap(apiInput);
+          const inputApi = apiHashMap.get(apiInput);
+          if (inputApi) {
+            inputApiFields = inputApi.miniProperties;
+          }
         });
         
         const activeTextEditor = vscode.window.activeTextEditor;
@@ -73,7 +75,7 @@ export function activate(context: vscode.ExtensionContext) {
         // vscode.window.showInformationMessage('Hello World from plugins_interface! ---> ');
         if (activeTextEditor) {
             const originalText = activeTextEditor.document.getText();
-            const { code: transformedText, deletionLabels } = babelConvert(originalText);
+            const { code: transformedText, deletionLabels } = babelConvert(originalText, inputApiFields);
             
             // 创建打开 babel 转换后的文档
             const transformedDocument = await vscode.workspace.openTextDocument({
@@ -267,88 +269,6 @@ async function generateApiMap (url: string) {
   // const resDto = renderDto(apiDto, data.definitions);
   // apiDtoHashMap = resDto.data;
 }
-
-
-
-function renderDto(dto: any, definitions: any) {
-  const {type, properties} = dto;
-  const records: any = {};
-  // if (type === 'object') {
-    const propertiesKeys = Object.keys(properties);
-    propertiesKeys.forEach((key) => {
-      const property = properties[key];
-      /**
-       * 嵌套对象
-       */
-      if (property['originalRef']) {
-        const objDto = renderDto(definitions[property['originalRef']], definitions);
-        records[key] = objDto;
-      }
-      else {
-        // records[key] = {
-        //   name: property.key,
-        //   type: property.type,
-        //   label: property.description
-        // }
-        records[property.description] = key
-      }
-    })
-  // }
-  return records
-}
-
-
-/**
- * babel 转换
- * @param originCodeString 
- * @returns 
- */
-function babelConvert(originCodeString: string): {
-  code: string,
-  deletionLabels: DeletionLabelsType
-} {
-    const result = babel.transformSync(originCodeString, {
-      plugins: [myPlugins],
-    });
-    return {
-      code: result.code,
-      deletionLabels: (babelConvert as any).deletionLabels
-    };
-  }
-(babelConvert as any).deletionLabels = [];
-  
-  function myPlugins() {
-    return {
-      inherits: jsxSyntax,
-      visitor: {
-        JSXOpeningElement: {
-          enter(path: any) {
-              const elemName = path.node.name.name;
-              const elemAttributes = path.node.attributes;
-              const hasLabelElm: any = elemAttributes.find((element: any) => {
-                  return element.name.name === 'label'
-              })
-              if (!hasLabelElm) return;
-              const hasNameElm = elemAttributes.find((element: any) => {
-                  return element.name.name === 'name'
-              })
-              let oldValue = hasNameElm.value.value;
-              if (apiDtoHashMap[hasLabelElm.value.value]) {
-                hasNameElm.value.value = apiDtoHashMap[hasLabelElm.value.value]
-              }
-              else {
-                (babelConvert as any).deletionLabels.push({
-                  name: hasLabelElm.value.value,
-                  loc: hasLabelElm.loc
-                });
-              }
-              console.log('--->>>>', hasLabelElm)
-            //   types.addComment(path.node, "leading", `${oldValue} -> test`);
-          },
-        },
-      },
-    };
-  }
 
 // This method is called when your extension is deactivated
 export function deactivate() {}
