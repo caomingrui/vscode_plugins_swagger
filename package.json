@@ -32,8 +32,6 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.12",
-    "@babel/plugin-syntax-jsx": "^7.18.6",
-    "@babel/preset-env": "^7.20.2",
     "@types/mocha": "^10.0.3",
     "@types/node": "18.x",
     "@types/vscode": "^1.84.0",
@@ -49,9 +47,12 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
-    "@babel/preset-typescript": "^7.23.2",
+    "@babel/generator": "^7.23.3",
+    "@babel/parser": "^7.23.3",
     "@babel/template": "^7.22.15",
+    "@babel/traverse": "^7.23.3",
     "@babel/types": "^7.23.0",
-    "axios": "^1.6.0"
+    "axios": "^1.6.0",
+    "prettier": "^3.1.0"
   }
 }

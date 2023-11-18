@@ -1,9 +1,6 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
-
-const babel = require("@babel/core");
-const {default: jsxSyntax} = require("@babel/plugin-syntax-jsx");
 const types = require('@babel/types');
 const axios = require('axios')
 const fs = require('fs');
@@ -75,7 +72,7 @@ export function activate(context: vscode.ExtensionContext) {
         // vscode.window.showInformationMessage('Hello World from plugins_interface! ---> ');
         if (activeTextEditor) {
             const originalText = activeTextEditor.document.getText();
-            const { code: transformedText, deletionLabels } = babelConvert(originalText, inputApiFields);
+            const { code: transformedText, deletionLabels } = await babelConvert(originalText, inputApiFields);
             
             // 创建打开 babel 转换后的文档
             const transformedDocument = await vscode.workspace.openTextDocument({
