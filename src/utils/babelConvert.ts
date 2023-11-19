@@ -15,14 +15,15 @@ const { format } = require('prettier');
 async function babelConvert(
     originCodeString: string, 
     dtoHashMap: Record<string, string>, 
-    selectionRecords: vscode.Range
+    selectionRecords: vscode.Range,
+    operationRecords: any,
 ): Promise<{
     code: string,
     deletionLabels: DeletionLabelsType
 }> {
     const ast = parser.parse(originCodeString, {
-    sourceType: 'unambiguous',
-    plugins: ['jsx', 'typescript']
+        sourceType: 'unambiguous',
+        plugins: ['jsx', 'typescript']
     });
     let selectTextObj: any = null;
     const { isEmpty, start, end } = selectionRecords;
@@ -33,6 +34,7 @@ async function babelConvert(
             end: { ...end, line: end.line + 1 }
         };
     }
+    const { type: operationType } = operationRecords;
       
     traverse(ast, {
         JSXOpeningElement: {
@@ -58,13 +60,32 @@ async function babelConvert(
                         return;
                     }
                 }
+                const elemDtoHashValue = dtoHashMap[elemNameValue];
+                const jsxNameValue = hasNameElm.value.value;
+                switch(operationType) {
+                    case 'replace':
+                        replaceTargetValue({
+                            elemDtoHashValue,
+                            targetElement: hasNameElm,
+                            elemLabelName: elemNameValue,
+                            loc: hasLabelElm.loc
+                        });
+                        break;
+                    case 'transform':
+                        if (elemDtoHashValue) {
+                            if (jsxNameValue != elemDtoHashValue) {
+                                Object.assign(operationRecords.transformData, {
+                                    // 目标key： 当前模板key 转化前的key
+                                    [elemDtoHashValue]: {
+                                        name: elemNameValue,
+                                        value: jsxNameValue,
+                                    }
+                                });
+                            }
+                        }
+                        break;
+                }
                 
-                replaceTargetValue({
-                    elemDtoHashValue: dtoHashMap[elemNameValue],
-                    targetElement: hasNameElm,
-                    elemLabelName: elemNameValue,
-                    loc: hasLabelElm.loc
-                });
             },
         }
     });
@@ -84,6 +105,7 @@ async function babelConvert(
         // 尾部逗号不处理
         trailingComma: "es5",
     });
+
     return {
         code: formattedCode,
         deletionLabels: (babelConvert as any).deletionLabels
@@ -114,6 +136,7 @@ function replaceTargetValue({
         });
     }
 }
+
 (babelConvert as any).deletionLabels = [];
 
 export default babelConvert;

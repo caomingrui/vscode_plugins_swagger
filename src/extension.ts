@@ -2,10 +2,15 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import axios from 'axios';
-const types = require('@babel/types');
-const fs = require('fs');
 import { ApiFileJson } from './utils/apiFileJson'
 import babelConvert from './utils/babelConvert';
+import { getApiInputRecords } from './utils/index';
+const types = require('@babel/types');
+const fs = require('fs');
+import * as t from '@babel/types';
+const babel = require('@babel/core');
+const { format } = require('prettier');
+
 let documentMetadata = '__API__';
 
 type LocType =  {
@@ -46,14 +51,14 @@ export function activate(context: vscode.ExtensionContext) {
 	// The commandId parameter must match the command field in package.json
 	let disposable = vscode.commands.registerCommand('plugins-interface.demo', async (...args) => {
         const apiInput = await vscode.window.showInputBox({ prompt: 'Enter something:', placeHolder: '输入api接口地址' });
-        // apiInput --> /payment-bill/save:post
+        // apiInput --> transform:/payment-bill/save:post
         if (!apiInput) {
           return vscode.window.showWarningMessage('请输入api接口地址！！');
         }
-        // 输入接口 参数集合
-        let inputApiFields = {};
-        // 解析api 地址
-        await vscode.window.withProgress({
+        const { operationType, apiUrl, method } = getApiInputRecords(apiInput);
+
+        // 解析api 地址 获取参数集合
+        const inputApiFields = await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
             title: "正在解析目标api字段...",
             // 如果设置为 true，将允许用户取消操作
@@ -61,83 +66,105 @@ export function activate(context: vscode.ExtensionContext) {
         }, async (progress) => {
           const apiFileJson = new ApiFileJson();
           let apiHashMap = await apiFileJson.getApiHashMap();
-          const inputApi = apiHashMap.get(apiInput);
+          const inputApi = apiHashMap.get(`${apiUrl}:${method}`);
+          let inputApiFields = {};
           if (inputApi) {
             inputApiFields = inputApi.miniProperties;
           }
+          return inputApiFields;
         });
         
         const activeTextEditor = vscode.window.activeTextEditor;
         (babelConvert as any).deletionLabels = [];
-        // vscode.window.showInformationMessage('Hello World from plugins_interface! ---> ');
-        if (activeTextEditor) {
-            // 获取选中文本
-            const selection = activeTextEditor.selection;
-            // 处理文本， 存在选中取用选中 否则当前文件全局文本内容
-            const originalText = activeTextEditor.document.getText();
-            const { code: transformedText, deletionLabels } = await babelConvert(
-              originalText, 
-              inputApiFields,
-              selection,
-            );
-            
+        if (!activeTextEditor) return;
+        // 根据不同type 生成不同操作
+        let operationRecords = null;
+        switch(operationType) {
+          case 'replace':
+          case '替换':
+            operationRecords = {
+              type: 'replace'
+            }
+            break;
+          case 'transform':
+          case '转换':
+            operationRecords = {
+              type: 'transform',
+              // 转化后存储对象
+              transformData: {},
+            }
+            break;
+        }
+
+        // if (activeTextEditor) {
+          // 获取选中文本
+          const selection = activeTextEditor.selection;
+          // 处理文本， 存在选中取用选中 否则当前文件全局文本内容
+          const originalText = activeTextEditor.document.getText();
+          const { code: transformedText, deletionLabels } = await babelConvert(
+            originalText, 
+            inputApiFields,
+            selection,
+            operationRecords,
+          );
+          console.log(operationRecords);
+          const apiDocument = await renderApiDocument(operationRecords, deletionLabels)
+          // 生成api接口信息（缺失字段|参数ts约束|生成请求函数）
+          const apiTextDocument = await setContent(apiDocument, { language: activeTextEditor.document.languageId });
+
+          if(operationRecords.type === "replace") {
             // 创建打开 babel 转换后的文档
             const transformedDocument = await vscode.workspace.openTextDocument({
                 language: activeTextEditor.document.languageId,
                 content: transformedText,
             });
-            
-            // 生成api接口信息（缺失字段|参数ts约束|生成请求函数）
-            const apiTextDocument = await setContent(
-              renderApiDocument(deletionLabels), 
-              { language: activeTextEditor.document.languageId });
-            
+          
             // 创建diff视图
             vscode.commands.executeCommand('vscode.diff', transformedDocument.uri, activeTextEditor.document.uri, '比对字段更改')
+          }
+
+          const dispatchTextDecorations = setTextDecorations.bind(null, activeTextEditor);
+          // 缓存api 文档
+          customDocuments.set(apiTextDocument.document, {
+            metadata: documentMetadata,
+            ...customDocuments.get(activeTextEditor.document),
+            dispatchTextDecorations,
+            // 操作的样式
+            decorationTypes: [],
+            deletionLabels
+          })
 
 
-            const dispatchTextDecorations = setTextDecorations.bind(null, activeTextEditor);
-            // 缓存api 文档
-            customDocuments.set(apiTextDocument.document, {
-              metadata: documentMetadata,
-              ...customDocuments.get(activeTextEditor.document),
-              dispatchTextDecorations,
-              // 操作的样式
-              decorationTypes: [],
-              deletionLabels
-            })
-
-
-            // 监听当前焦点所在文档
-            vscode.window.onDidChangeTextEditorSelection((e) => {
-              if (e.textEditor.viewColumn === vscode.ViewColumn.Two) {
-                if (!customDocuments.has(e.textEditor.document)) return;
-                const { metadata, deletionLabels } = customDocuments.get(e.textEditor.document) || {};
-                // 针对documentMetadata 类型文档操作
-                // 选择缺失字段更改醒目样式
-                if (metadata === documentMetadata) {
-                  const selectedText = e.textEditor.document.getText(e.selections[0]);
-                  const checkDeletionLabel = deletionLabels?.find(label => label.name === selectedText);
-                  // 设置前重置样式
-                  customDocuments.get(e.textEditor.document)?.decorationTypes.forEach(l => l.dispose());
-                  // 为所有缺失字段设置默认样式
-                  deletionLabels?.forEach(checkDeletionLabel => {
-                      const decorationType = dispatchTextDecorations(checkDeletionLabel, {
-                        backgroundColor: '#845ef7',
-                      })
-                      customDocuments.get(e.textEditor.document)?.decorationTypes.push(decorationType);
-                  })
-                  if (!selectedText.length || !checkDeletionLabel) return
-                  // 为选中字段设置高亮样式
-                  const decorationType = dispatchTextDecorations(checkDeletionLabel, {
-                    backgroundColor: '#e8590c',
-                    border: '2px solid red'
-                  })
-                  customDocuments.get(e.textEditor.document)?.decorationTypes.push(decorationType);
-                }
+          // 监听当前焦点所在文档
+          vscode.window.onDidChangeTextEditorSelection((e) => {
+            if (e.textEditor.viewColumn === vscode.ViewColumn.Two) {
+              if (!customDocuments.has(e.textEditor.document)) return;
+              const { metadata, deletionLabels } = customDocuments.get(e.textEditor.document) || {};
+              // 针对documentMetadata 类型文档操作
+              // 选择缺失字段更改醒目样式
+              if (metadata === documentMetadata) {
+                const selectedText = e.textEditor.document.getText(e.selections[0]);
+                const checkDeletionLabel = deletionLabels?.find(label => label.name === selectedText);
+                // 设置前重置样式
+                customDocuments.get(e.textEditor.document)?.decorationTypes.forEach(l => l.dispose());
+                // 为所有缺失字段设置默认样式
+                deletionLabels?.forEach(checkDeletionLabel => {
+                    const decorationType = dispatchTextDecorations(checkDeletionLabel, {
+                      backgroundColor: '#845ef7',
+                    })
+                    customDocuments.get(e.textEditor.document)?.decorationTypes.push(decorationType);
+                })
+                if (!selectedText.length || !checkDeletionLabel) return
+                // 为选中字段设置高亮样式
+                const decorationType = dispatchTextDecorations(checkDeletionLabel, {
+                  backgroundColor: '#e8590c',
+                  border: '2px solid red'
+                })
+                customDocuments.get(e.textEditor.document)?.decorationTypes.push(decorationType);
               }
-            });
-      }
+            }
+          });
+      // }
 	});
 
   // 监听文档关闭
@@ -224,11 +251,37 @@ const apiUrl = 'http://localhost:3000';
 /**
  * 生成api 信息文档
  */
-function renderApiDocument(deletionLabels: DeletionLabelsType) {
-  return `// 选中字段高亮
-// 缺失字段 --> ${deletionLabels.map(l => l.name).join()}
-
-`
+async function renderApiDocument(operationRecords: any, deletionLabels: DeletionLabelsType) {
+  const { type: operationType } = operationRecords;
+  let outPutText = '';
+  switch (operationType) {
+    case 'replace':
+      outPutText = `// 选中字段高亮
+      // 缺失字段 --> ${deletionLabels.map(l => l.name).join()}`
+      break;
+    case 'transform':
+      let str = `
+      // 转换对象
+      let data = {};
+      const transformData = {`;
+      Object.keys(operationRecords.transformData).forEach(res => {
+        let transformDataItem = operationRecords.transformData[res];
+        str += `
+        // ${transformDataItem.name}
+        ${res}: data.${transformDataItem.value},` 
+      })
+      str += '}'
+      outPutText = str;
+      break;
+  }
+  let formattedCode = await format(outPutText, {
+      parser: "typescript",
+      // 取消单音符替换双音符
+      singleQuote: true,
+      // 尾部逗号不处理
+      trailingComma: "es5",
+  });
+  return formattedCode;
 }
 
 
