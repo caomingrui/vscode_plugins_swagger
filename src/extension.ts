@@ -1,8 +1,8 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import axios from 'axios';
 const types = require('@babel/types');
-const axios = require('axios')
 const fs = require('fs');
 import { ApiFileJson } from './utils/apiFileJson'
 import babelConvert from './utils/babelConvert';
@@ -71,8 +71,15 @@ export function activate(context: vscode.ExtensionContext) {
         (babelConvert as any).deletionLabels = [];
         // vscode.window.showInformationMessage('Hello World from plugins_interface! ---> ');
         if (activeTextEditor) {
+            // 获取选中文本
+            const selection = activeTextEditor.selection;
+            // 处理文本， 存在选中取用选中 否则当前文件全局文本内容
             const originalText = activeTextEditor.document.getText();
-            const { code: transformedText, deletionLabels } = await babelConvert(originalText, inputApiFields);
+            const { code: transformedText, deletionLabels } = await babelConvert(
+              originalText, 
+              inputApiFields,
+              selection,
+            );
             
             // 创建打开 babel 转换后的文档
             const transformedDocument = await vscode.workspace.openTextDocument({
