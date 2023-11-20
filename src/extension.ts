@@ -5,6 +5,7 @@ import axios from 'axios';
 import { ApiFileJson } from './utils/apiFileJson'
 import babelConvert from './utils/babelConvert';
 import { getApiInputRecords } from './utils/index';
+import { logger } from './utils/logger';
 const types = require('@babel/types');
 const fs = require('fs');
 import * as t from '@babel/types';
@@ -44,16 +45,19 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "plugins-interface" is now active!');
+	logger.log('Congratulations, your extension "plugins-interface" is now active!');
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
 	let disposable = vscode.commands.registerCommand('plugins-interface.demo', async (...args) => {
+        logger.log('执行脚本：plugins-interface.demo');
         const apiInput = await vscode.window.showInputBox({ prompt: 'Enter something:', placeHolder: '输入api接口地址' });
         // apiInput --> transform:/payment-bill/save:post
         if (!apiInput) {
-          return vscode.window.showWarningMessage('请输入api接口地址！！');
+          let msg = '请输入api接口地址・・・・';
+          logger.error(msg);
+          return vscode.window.showWarningMessage(msg);
         }
         const { operationType, apiUrl, method } = getApiInputRecords(apiInput);
 
@@ -107,7 +111,7 @@ export function activate(context: vscode.ExtensionContext) {
             selection,
             operationRecords,
           );
-          console.log(operationRecords);
+          logger.debug(operationRecords);
           const apiDocument = await renderApiDocument(operationRecords, deletionLabels)
           // 生成api接口信息（缺失字段|参数ts约束|生成请求函数）
           const apiTextDocument = await setContent(apiDocument, { language: activeTextEditor.document.languageId });
@@ -170,7 +174,7 @@ export function activate(context: vscode.ExtensionContext) {
   // 监听文档关闭
   const documentCloseListener = vscode.workspace.onDidCloseTextDocument((closedDocument) => {
     // 在文档关闭时执行操作
-    console.log(`Document closed: ${closedDocument.fileName}`, customDocuments.get(closedDocument));
+    logger.log(`Document closed: ${closedDocument.fileName}`, customDocuments.get(closedDocument));
     const customDocument = customDocuments.get(closedDocument)
     if (customDocument) {
       // 重置样式
