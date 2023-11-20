@@ -18,7 +18,7 @@ export type CustomDocumentsType = {
 
 export type DeletionLabelsType = {
     name: string,
-    loc: LocType
+    loc: LocType  | t.SourceLocation
   }[]
 
 /**
@@ -32,5 +32,7 @@ export type ReplaceTargetValueProps = {
     // 元素label 名称
     elemLabelName: string;
     // 元素当前行列信息
-    loc: t.SourceLocation
+    loc: t.SourceLocation;
+    // 标准缺失字段
+    deletionLabels: DeletionLabelsType;
 }

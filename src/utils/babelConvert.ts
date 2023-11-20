@@ -1,6 +1,6 @@
 import type { DeletionLabelsType, ReplaceTargetValueProps } from '../interface/index';
-import * as vscode from 'vscode';
 import * as t from '@babel/types';
+import UtilsType from '../interface/utils';
 const parser = require('@babel/parser');
 const traverse = require('@babel/traverse').default;
 const generator = require('@babel/generator');
@@ -15,8 +15,7 @@ const { format } = require('prettier');
 async function babelConvert(
     originCodeString: string, 
     dtoHashMap: Record<string, string>, 
-    selectionRecords: vscode.Range,
-    operationRecords: any,
+    operationRecords: UtilsType.GenerateOperationRecords,
 ): Promise<{
     code: string,
     deletionLabels: DeletionLabelsType
@@ -26,7 +25,8 @@ async function babelConvert(
         plugins: ['jsx', 'typescript']
     });
     let selectTextObj: any = null;
-    const { isEmpty, start, end } = selectionRecords;
+    const { type: operationType, selection } = operationRecords;
+    const { isEmpty, start, end } = selection;
     // 存在选中区域
     if (!isEmpty) {
         selectTextObj = {
@@ -34,7 +34,7 @@ async function babelConvert(
             end: { ...end, line: end.line + 1 }
         };
     }
-    const { type: operationType } = operationRecords;
+    
       
     traverse(ast, {
         JSXOpeningElement: {
@@ -68,7 +68,8 @@ async function babelConvert(
                             elemDtoHashValue,
                             targetElement: hasNameElm,
                             elemLabelName: elemNameValue,
-                            loc: hasLabelElm.loc
+                            loc: hasLabelElm.loc,
+                            deletionLabels: operationRecords.deletionLabels
                         });
                         break;
                     case 'transform':
@@ -122,7 +123,8 @@ function replaceTargetValue({
     elemDtoHashValue,
     targetElement,
     elemLabelName,
-    loc
+    loc,
+    deletionLabels,
 }: ReplaceTargetValueProps) {
     if (!targetElement.value) return;
     let jsxNameElmVal = targetElement.value as t.StringLiteral;
@@ -130,13 +132,12 @@ function replaceTargetValue({
     if (elemDtoHashValue) {
         jsxNameElmVal.value = elemDtoHashValue;
     } else {
-        (babelConvert as any).deletionLabels.push({
+        // 添加缺失字段信息
+        deletionLabels.push({
             name: elemLabelName,
             loc
         });
     }
 }
-
-(babelConvert as any).deletionLabels = [];
 
 export default babelConvert;
